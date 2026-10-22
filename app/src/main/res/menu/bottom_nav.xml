@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<menu xmlns:android="http://schemas.android.com/apk/res/android">
+    <item
+        android:id="@+id/nav_phone"
+        android:icon="@drawable/ic_dialpad"
+        android:title="Phone" />
+    <item
+        android:id="@+id/nav_contacts"
+        android:icon="@drawable/ic_people"
+        android:title="Contacts" />
+</menu>

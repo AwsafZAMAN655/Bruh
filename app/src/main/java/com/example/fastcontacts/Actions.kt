@@ -62,10 +62,7 @@ object Actions {
     }
 
     fun call(ctx: Context, number: String) {
-        val uri = Uri.parse("tel:" + Uri.encode(number))
-        val granted = ContextCompat.checkSelfPermission(ctx, Manifest.permission.CALL_PHONE) ==
-            PackageManager.PERMISSION_GRANTED
-        safeStart(ctx, Intent(if (granted) Intent.ACTION_CALL else Intent.ACTION_DIAL, uri))
+        SimSelector.makeCall(ctx, number)
     }
 
     fun sms(ctx: Context, number: String) {

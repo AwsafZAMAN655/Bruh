@@ -1,4 +1,3 @@
-
 package com.example.fastcontacts
 
 import android.os.Handler
@@ -6,14 +5,52 @@ import android.os.Looper
 import android.view.LayoutInflater
 import android.view.MotionEvent
 import android.view.View
+import android.view.ViewGroup
 import android.widget.GridLayout
 import android.widget.ImageButton
+import android.widget.ImageView
 import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
+import androidx.recyclerview.widget.DiffUtil
 import androidx.recyclerview.widget.LinearLayoutManager
+import androidx.recyclerview.widget.ListAdapter
 import androidx.recyclerview.widget.RecyclerView
 import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicInteger
+
+/** Horizontal strip of suggested contacts shown above the keypad. */
+class SuggestAdapter(
+    private val onClick: (Contact) -> Unit,
+    private val onLongClick: (Contact) -> Unit
+) : ListAdapter<Contact, SuggestAdapter.VH>(Diff()) {
+
+    private class Diff : DiffUtil.ItemCallback<Contact>() {
+        override fun areItemsTheSame(a: Contact, b: Contact): Boolean = a.id == b.id
+        override fun areContentsTheSame(a: Contact, b: Contact): Boolean = a == b
+    }
+
+    override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): VH {
+        val v = LayoutInflater.from(parent.context).inflate(R.layout.item_suggested, parent, false)
+        return VH(v)
+    }
+
+    override fun onBindViewHolder(holder: VH, position: Int) {
+        val c = getItem(position)
+        holder.avatar.bind(c)
+        holder.name.text = c.firstName.ifBlank { c.name }
+        holder.itemView.contentDescription = c.name
+        holder.itemView.setOnClickListener { onClick(c) }
+        holder.itemView.setOnLongClickListener {
+            onLongClick(c)
+            true
+        }
+    }
+
+    class VH(view: View) : RecyclerView.ViewHolder(view) {
+        val avatar: AvatarView = view.findViewById(R.id.sugAvatar)
+        val name: TextView = view.findViewById(R.id.sugName)
+    }
+}
 
 class DialpadController(
     private val activity: AppCompatActivity,
@@ -25,8 +62,14 @@ class DialpadController(
     private val display: TextView =
         root.findViewById(R.id.dialDisplay)
 
-    private val recentSection: View =
-        root.findViewById(R.id.recentSection)
+    private val suggestSection: View =
+        root.findViewById(R.id.suggestSection)
+
+    private val suggestedStrip: RecyclerView =
+        root.findViewById(R.id.suggestedStrip)
+
+    private val suggestedEmpty: View =
+        root.findViewById(R.id.suggestedEmpty)
 
     private val matchesTitle: View =
         root.findViewById(R.id.matchesTitle)
@@ -34,11 +77,14 @@ class DialpadController(
     private val keypad: GridLayout =
         root.findViewById(R.id.keypad)
 
-    private val toggleKeypad: TextView =
+    private val toggleKeypad: ImageView =
         root.findViewById(R.id.btnToggleKeypad)
 
     private val dialMatches: RecyclerView =
         root.findViewById(R.id.dialMatches)
+
+    private val btnAdd: ImageButton =
+        root.findViewById(R.id.btnAddContact)
 
     @Volatile
     private var contacts: List<Contact> = emptyList()
@@ -65,9 +111,25 @@ class DialpadController(
         }
     )
 
+    private val suggestAdapter = SuggestAdapter(
+        onClick = { contact ->
+            // Tapping a suggestion fills the number so it can be checked, then called.
+            Actions.withNumber(activity, contact) { n ->
+                number.setLength(0)
+                number.append(n.filter { it.isDigit() || it == '+' || it == '*' || it == '#' })
+                refresh()
+            }
+        },
+        onLongClick = openContact
+    )
+
     init {
         dialMatches.layoutManager = LinearLayoutManager(activity)
         dialMatches.adapter = adapter
+
+        suggestedStrip.layoutManager =
+            LinearLayoutManager(activity, LinearLayoutManager.HORIZONTAL, false)
+        suggestedStrip.adapter = suggestAdapter
 
         val keys = listOf(
             "1" to "",
@@ -99,9 +161,9 @@ class DialpadController(
             params.width = 0
             params.height = Ui.dp(activity, 58)
             params.setMargins(
-                Ui.dp(activity, 6),
+                Ui.dp(activity, 5),
                 Ui.dp(activity, 4),
-                Ui.dp(activity, 6),
+                Ui.dp(activity, 5),
                 Ui.dp(activity, 4)
             )
 
@@ -112,8 +174,8 @@ class DialpadController(
                 when (event.actionMasked) {
                     MotionEvent.ACTION_DOWN -> {
                         view.animate()
-                            .scaleX(0.92f)
-                            .scaleY(0.92f)
+                            .scaleX(0.94f)
+                            .scaleY(0.94f)
                             .setDuration(70)
                             .start()
                     }
@@ -156,11 +218,7 @@ class DialpadController(
                 View.VISIBLE
             }
 
-            toggleKeypad.text = if (isVisible) {
-                "Show keypad"
-            } else {
-                "Hide keypad"
-            }
+            toggleKeypad.rotation = if (isVisible) 180f else 0f
 
             toggleKeypad.contentDescription = if (isVisible) {
                 "Show dialpad"
@@ -169,24 +227,23 @@ class DialpadController(
             }
 
             dialMatches.requestLayout()
-            recentSection.requestLayout()
+            suggestSection.requestLayout()
         }
 
-        root.findViewById<ImageButton>(R.id.btnDialCall)
+        root.findViewById<View>(R.id.btnDialCall)
             .setOnClickListener {
                 if (number.isNotEmpty()) {
                     Actions.call(activity, number.toString())
                 }
             }
 
-        root.findViewById<ImageButton>(R.id.btnAddContact)
-            .setOnClickListener {
-                if (number.isNotEmpty()) {
-                    Actions.create(activity, number.toString())
-                } else {
-                    Actions.toast(activity, "Enter a number first")
-                }
+        btnAdd.setOnClickListener {
+            if (number.isNotEmpty()) {
+                Actions.create(activity, number.toString())
+            } else {
+                Actions.toast(activity, "Enter a number first")
             }
+        }
 
         val backspace =
             root.findViewById<ImageButton>(R.id.btnBackspace)
@@ -213,6 +270,12 @@ class DialpadController(
         refresh()
     }
 
+    fun setSuggestions(list: List<Contact>) {
+        suggestAdapter.submitList(list)
+        suggestedStrip.visibility = if (list.isEmpty()) View.GONE else View.VISIBLE
+        suggestedEmpty.visibility = if (list.isEmpty()) View.VISIBLE else View.GONE
+    }
+
     fun dispose() {
         pendingSearch?.let(handler::removeCallbacks)
         searchExecutor.shutdownNow()
@@ -222,12 +285,13 @@ class DialpadController(
         val query = number.toString()
 
         display.text = query
-        display.textSize = if (number.length > 14) 24f else 32f
+        display.textSize = if (number.length > 14) 24f else 30f
+        btnAdd.visibility = if (query.isEmpty()) View.INVISIBLE else View.VISIBLE
 
         val searching = query.isNotEmpty()
 
         if (!searching) {
-            recentSection.visibility = View.VISIBLE
+            suggestSection.visibility = View.VISIBLE
             matchesTitle.visibility = View.GONE
             dialMatches.visibility = View.GONE
 
@@ -237,9 +301,9 @@ class DialpadController(
             return
         }
 
-        // Keep the results area as flexible space above the keypad.
-        // This prevents the keypad from jumping upward when typing.
-        recentSection.visibility = View.GONE
+        // The results area is flexible space above the keypad sheet, so the
+        // keypad never jumps when the first digit is typed.
+        suggestSection.visibility = View.GONE
         matchesTitle.visibility = View.VISIBLE
         dialMatches.visibility = View.VISIBLE
 

@@ -20,8 +20,8 @@ import kotlin.math.min
 
 object Avatar {
     private val colors = intArrayOf(
-        0xFF1A73E8.toInt(), 0xFFD93025.toInt(), 0xFF188038.toInt(), 0xFFE37400.toInt(),
-        0xFF9334E6.toInt(), 0xFF129EAF.toInt(), 0xFFC2185B.toInt(), 0xFF5F6368.toInt()
+        0xFFFDD663.toInt(), 0xFFF6AEA9.toInt(), 0xFFF3A8DB.toInt(), 0xFFA8DAB5.toInt(),
+        0xFF73D7F3.toInt(), 0xFFD7AEFB.toInt(), 0xFFAECBFA.toInt(), 0xFFFDC69C.toInt()
     )
 
     fun letter(name: String): String = name.trim().firstOrNull()?.uppercase() ?: "?"
@@ -79,7 +79,7 @@ class AvatarView @JvmOverloads constructor(context: Context, attrs: AttributeSet
 
     private val bg = Paint(Paint.ANTI_ALIAS_FLAG)
     private val txt = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = Color.WHITE
+        color = 0xFF1F2423.toInt()
         textAlign = Paint.Align.CENTER
         typeface = Typeface.DEFAULT_BOLD
     }

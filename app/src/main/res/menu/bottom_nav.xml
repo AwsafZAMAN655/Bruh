@@ -1,11 +1,15 @@
 <?xml version="1.0" encoding="utf-8"?>
 <menu xmlns:android="http://schemas.android.com/apk/res/android">
     <item
-        android:id="@+id/nav_phone"
-        android:icon="@drawable/ic_dialpad"
-        android:title="Phone" />
+        android:id="@+id/nav_home"
+        android:icon="@drawable/ic_home"
+        android:title="Home" />
     <item
         android:id="@+id/nav_contacts"
         android:icon="@drawable/ic_people"
         android:title="Contacts" />
+    <item
+        android:id="@+id/nav_keypad"
+        android:icon="@drawable/ic_dialpad"
+        android:title="Keypad" />
 </menu>

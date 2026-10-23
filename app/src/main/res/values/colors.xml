@@ -1,18 +1,21 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <color name="app_bg">#FAFBFE</color>
-    <color name="app_surface">#FFFFFF</color>
-    <color name="app_surface_variant">#EDF0F7</color>
-    <color name="app_outline">#DADFE9</color>
-    <color name="app_text">#1B1C20</color>
-    <color name="app_text_secondary">#5B6070</color>
-    <color name="app_accent">#3563E0</color>
+    <color name="app_bg">#E5EEEC</color>
+    <color name="app_surface">#F3F9F8</color>
+    <color name="app_surface_variant">#DCE7E5</color>
+    <color name="app_outline">#BFC9C7</color>
+    <color name="app_text">#171D1C</color>
+    <color name="app_text_secondary">#46514F</color>
+    <color name="app_accent">#00696A</color>
     <color name="app_on_accent">#FFFFFF</color>
-    <color name="app_accent_container">#DCE5FF</color>
-    <color name="app_on_accent_container">#0E2A6D</color>
+    <color name="app_accent_container">#C7E9E5</color>
+    <color name="app_on_accent_container">#00201F</color>
     <color name="app_star">#F5A400</color>
-    <color name="app_danger">#D93025</color>
+    <color name="app_danger">#BA1A1A</color>
     <color name="app_call">#1E8E3E</color>
     <color name="app_on_call">#FFFFFF</color>
-    <color name="app_nav_bg">#F0F3FA</color>
+    <color name="app_nav_bg">#DEE8E6</color>
+    <color name="app_sheet">#DAE6E4</color>
+    <color name="app_tertiary">#8A5100</color>
+    <color name="app_avatar_text">#1F2423</color>
 </resources>

@@ -1,22 +1,32 @@
 package com.example.fastcontacts
 
 import android.Manifest
+import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
+import android.provider.CallLog
+import android.speech.RecognizerIntent
 import android.transition.TransitionManager
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import android.view.animation.DecelerateInterpolator
+import android.view.inputmethod.InputMethodManager
+import android.widget.ArrayAdapter
 import android.widget.Button
 import android.widget.EditText
 import android.widget.ImageButton
 import android.widget.ImageView
+import android.widget.LinearLayout
+import android.widget.ListView
 import android.widget.PopupMenu
 import android.widget.TextView
+import androidx.activity.OnBackPressedCallback
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityOptionsCompat
 import androidx.core.content.ContextCompat
@@ -40,8 +50,12 @@ class MainActivity : AppCompatActivity() {
     private lateinit var chipsScroll: View
     private lateinit var chipGroup: ChipGroup
     private lateinit var list: RecyclerView
+    private lateinit var paneHome: View
     private lateinit var paneContacts: View
     private lateinit var paneDialpad: View
+    private lateinit var homeChipsScroll: View
+    private lateinit var homeChipGroup: ChipGroup
+    private lateinit var btnMic: ImageButton
     private lateinit var emptyContacts: View
     private lateinit var emptyPermission: View
     private lateinit var index: AlphabetIndexView
@@ -56,14 +70,19 @@ class MainActivity : AppCompatActivity() {
     /** Reused across keystrokes so the search index is built once per contact load. */
     @Volatile
     private var searchEngine: SearchEngine = SearchEngine(emptyList())
-    // 0 = Phone, 1 = Contacts
+    // 0 = Home (recents), 1 = Contacts. The keypad is a slide-up overlay on top of either.
     private var tab = 0
+    private var keypadOpen = false
+    private var homeFilter = 0
+    private val homeChipIds = ArrayList<Int>()
+    private var callEntries: List<CallLogEntry> = emptyList()
+    private var phoneIndex: PhoneIndex = PhoneIndex(emptyList())
     private val mainHandler = Handler(Looper.getMainLooper())
     private var filterRunnable: Runnable? = null
     private var loadGeneration = 0
     private var filterGeneration = 0
     private val filterExecutor = Executors.newSingleThreadExecutor()
-    private lateinit var callLogAdapter: CallLogAdapter
+    private lateinit var homeAdapter: HomeAdapter
     private var lastQuery = ""
     private val chipTitles = HashMap<Int, String?>()
 
@@ -84,6 +103,22 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    private val voiceLauncher = registerForActivityResult(
+        ActivityResultContracts.StartActivityForResult()
+    ) { r ->
+        val text = r.data?.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS)?.firstOrNull()
+        if (r.resultCode == RESULT_OK && !text.isNullOrBlank()) {
+            search.setText(text)
+            search.setSelection(text.length)
+        }
+    }
+
+    private val backCallback = object : OnBackPressedCallback(false) {
+        override fun handleOnBackPressed() {
+            nav.selectedItemId = if (tab == 0) R.id.nav_home else R.id.nav_contacts
+        }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
@@ -96,8 +131,12 @@ class MainActivity : AppCompatActivity() {
         chipsScroll = findViewById(R.id.chipsScroll)
         chipGroup = findViewById(R.id.chipGroup)
         list = findViewById(R.id.list)
+        paneHome = findViewById(R.id.paneHome)
         paneContacts = findViewById(R.id.paneContacts)
         paneDialpad = findViewById(R.id.paneDialpad)
+        homeChipsScroll = findViewById(R.id.homeChipsScroll)
+        homeChipGroup = findViewById(R.id.homeChipGroup)
+        btnMic = findViewById(R.id.btnMic)
         emptyContacts = findViewById(R.id.emptyContacts)
         emptyPermission = findViewById(R.id.emptyPermission)
         index = findViewById(R.id.alphabetIndex)
@@ -110,26 +149,47 @@ class MainActivity : AppCompatActivity() {
         list.adapter = adapter
 
         dialpad = DialpadController(this, paneDialpad) { openDetail(it) }
-        callLogAdapter = CallLogAdapter { entry ->
-            if (entry.number.isNotBlank()) Actions.call(this, entry.number)
-        }
+        homeAdapter = HomeAdapter(
+            onAvatar = { g -> onHomeAvatar(g) },
+            onCall = { g -> Actions.call(this, g.number) },
+            onMessage = { g -> Actions.sms(this, g.number) },
+            onHistory = { g -> showHistory(g) },
+            onFavourite = { c -> openDetail(c) },
+            onAddFavourite = { showAddFavourite() },
+            onNotice = { if (!hasCallLogPermission()) requestCallLogPermission() }
+        )
         findViewById<RecyclerView>(R.id.recentCalls).apply {
             layoutManager = LinearLayoutManager(this@MainActivity)
-            adapter = callLogAdapter
+            adapter = homeAdapter
             isNestedScrollingEnabled = true
         }
-        findViewById<TextView>(R.id.recentCallsEmpty).setOnClickListener {
-            if (!hasCallLogPermission()) requestCallLogPermission()
-        }
+        buildHomeChips()
+        onBackPressedDispatcher.addCallback(this, backCallback)
 
         search.doAfterTextChanged {
             btnClear.visibility = if (it.isNullOrEmpty()) View.GONE else View.VISIBLE
+            btnMic.visibility = if (it.isNullOrEmpty()) View.VISIBLE else View.GONE
+            // Searching from Home shows the matching contacts.
+            if (!it.isNullOrEmpty() && tab == 0 && !keypadOpen) nav.selectedItemId = R.id.nav_contacts
             filterRunnable?.let(mainHandler::removeCallbacks)
             val task = Runnable { applyFilter() }
             filterRunnable = task
             mainHandler.postDelayed(task, 50L)
         }
         btnClear.setOnClickListener { search.setText("") }
+        btnMic.setOnClickListener {
+            try {
+                val i = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH)
+                i.putExtra(
+                    RecognizerIntent.EXTRA_LANGUAGE_MODEL,
+                    RecognizerIntent.LANGUAGE_MODEL_FREE_FORM
+                )
+                i.putExtra(RecognizerIntent.EXTRA_PROMPT, "Search contacts")
+                voiceLauncher.launch(i)
+            } catch (e: Exception) {
+                Actions.toast(this, "Voice search is not available on this device")
+            }
+        }
 
         findViewById<ImageButton>(R.id.btnMenu).setOnClickListener { v ->
             val pm = PopupMenu(this, v)
@@ -153,8 +213,16 @@ class MainActivity : AppCompatActivity() {
 
         nav.setOnItemSelectedListener { item ->
             when (item.itemId) {
-                R.id.nav_phone -> showTab(0)
-                R.id.nav_contacts -> showTab(1)
+                R.id.nav_home -> {
+                    if (!search.text.isNullOrEmpty()) search.setText("")
+                    closeKeypad()
+                    showTab(0)
+                }
+                R.id.nav_contacts -> {
+                    closeKeypad()
+                    showTab(1)
+                }
+                R.id.nav_keypad -> openKeypad()
             }
             true
         }
@@ -163,13 +231,7 @@ class MainActivity : AppCompatActivity() {
         else if (hasCallLogPermission()) loadCallLog()
         else requestCallLogPermission()
         showTab(0)
-        if (!hasCallLogPermission()) {
-            findViewById<RecyclerView>(R.id.recentCalls).visibility = View.GONE
-            findViewById<TextView>(R.id.recentCallsEmpty).apply {
-                text = "Tap here to allow call history access"
-                visibility = View.VISIBLE
-            }
-        }
+        rebuildHome()
     }
 
     override fun onResume() {
@@ -213,24 +275,154 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun loadCallLog() {
-        val recentList = findViewById<RecyclerView>(R.id.recentCalls)
-        val recentEmpty = findViewById<TextView>(R.id.recentCallsEmpty)
         if (!hasCallLogPermission()) {
-            recentList.visibility = View.GONE
-            recentEmpty.text = "Tap here to allow call history access"
-            recentEmpty.visibility = View.VISIBLE
+            callEntries = emptyList()
+            rebuildHome()
             return
         }
         Thread {
-            val entries = CallLogRepository.loadRecent(this, 40)
+            val entries = CallLogRepository.loadRecent(this, 300)
             runOnUiThread {
                 if (isFinishing || isDestroyed) return@runOnUiThread
-                callLogAdapter.submit(entries)
-                recentList.visibility = if (entries.isEmpty()) View.GONE else View.VISIBLE
-                recentEmpty.text = if (entries.isEmpty()) "No recent calls yet" else ""
-                recentEmpty.visibility = if (entries.isEmpty()) View.VISIBLE else View.GONE
+                callEntries = entries
+                rebuildHome()
             }
         }.start()
+    }
+
+    private fun buildHomeChips() {
+        val inf = LayoutInflater.from(this)
+        val titles = listOf("All", "Missed", "Contacts", "Non-contacts")
+        for ((i, t) in titles.withIndex()) {
+            val chip = inf.inflate(R.layout.chip_filter, homeChipGroup, false) as Chip
+            chip.id = View.generateViewId()
+            chip.text = t
+            chip.isCheckable = true
+            homeChipIds.add(chip.id)
+            homeChipGroup.addView(chip)
+            if (i == 0) chip.isChecked = true
+        }
+        homeChipGroup.setOnCheckedStateChangeListener { _, ids ->
+            homeFilter = if (ids.isEmpty()) 0 else homeChipIds.indexOf(ids[0]).coerceAtLeast(0)
+            rebuildHome()
+        }
+    }
+
+    private fun rebuildHome() {
+        val favs = sortedAll.filter { it.starred }
+        val allGroups = HomeBuilder.groups(callEntries, phoneIndex)
+        var notice: String? = null
+        var shown: List<CallGroup> = allGroups
+        if (!hasCallLogPermission()) {
+            notice = "Tap here to allow call history access"
+            shown = emptyList()
+        } else {
+            shown = when (homeFilter) {
+                1 -> allGroups.filter { it.type == CallLog.Calls.MISSED_TYPE }
+                2 -> allGroups.filter { it.contact != null }
+                3 -> allGroups.filter { it.contact == null }
+                else -> allGroups
+            }
+            if (shown.isEmpty()) {
+                notice = if (homeFilter == 0) "No recent calls yet" else "No calls match this filter"
+            }
+        }
+        homeAdapter.submit(HomeBuilder.rows(this, shown, favs, notice))
+        dialpad.setSuggestions(buildSuggestions(allGroups, favs))
+    }
+
+    private fun buildSuggestions(groups: List<CallGroup>, favs: List<Contact>): List<Contact> {
+        val seen = HashSet<Long>()
+        val out = ArrayList<Contact>()
+        for (g in groups) {
+            val c = g.contact ?: continue
+            if (seen.add(c.id)) out.add(c)
+            if (out.size >= 8) break
+        }
+        for (c in favs) {
+            if (out.size >= 14) break
+            if (seen.add(c.id)) out.add(c)
+        }
+        return out
+    }
+
+    private fun onHomeAvatar(g: CallGroup) {
+        val c = g.contact
+        if (c != null) {
+            openDetail(c)
+            return
+        }
+        val acts = ArrayList<Ui.SheetAction>()
+        acts.add(Ui.SheetAction("Call", R.drawable.ic_call) { Actions.call(this, g.number) })
+        acts.add(Ui.SheetAction("Message", R.drawable.ic_sms) { Actions.sms(this, g.number) })
+        acts.add(Ui.SheetAction("Add to contacts", R.drawable.ic_person_add) { Actions.create(this, g.number) })
+        acts.add(Ui.SheetAction("Copy number", R.drawable.ic_copy) {
+            Actions.copy(this, g.number)
+            Actions.toast(this, "Number copied")
+        })
+        Ui.showSheet(this, g.name, acts)
+    }
+
+    private fun showHistory(g: CallGroup) {
+        val key = PhoneKey.of(g.number)
+        Thread {
+            val list = if (hasCallLogPermission()) {
+                CallLogRepository.loadForKeys(this, setOf(key), 200)
+            } else emptyList()
+            runOnUiThread {
+                if (isFinishing || isDestroyed) return@runOnUiThread
+                CallHistorySheet.show(this, g.name, list)
+            }
+        }.start()
+    }
+
+    private fun showAddFavourite() {
+        val candidates = sortedAll.filter { !it.starred }
+        if (candidates.isEmpty()) {
+            Actions.toast(this, "No contacts to add")
+            return
+        }
+        val engine = SearchEngine(candidates)
+        var shown: List<Contact> = candidates.take(100)
+        val listAdapter = ArrayAdapter(
+            this, android.R.layout.simple_list_item_1, ArrayList(shown.map { it.name })
+        )
+        val listView = ListView(this)
+        listView.adapter = listAdapter
+        val input = EditText(this)
+        input.hint = "Search contacts"
+        input.setSingleLine()
+        val box = LinearLayout(this)
+        box.orientation = LinearLayout.VERTICAL
+        box.setPadding(Ui.dp(this, 20), Ui.dp(this, 8), Ui.dp(this, 20), 0)
+        box.addView(
+            input,
+            LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
+        )
+        box.addView(
+            listView,
+            LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, Ui.dp(this, 360))
+        )
+        val dialog = AlertDialog.Builder(this)
+            .setTitle("Add favourite")
+            .setView(box)
+            .setNegativeButton("Cancel", null)
+            .create()
+        input.doAfterTextChanged { t ->
+            shown = engine.search(t?.toString().orEmpty()).take(100)
+            listAdapter.clear()
+            listAdapter.addAll(shown.map { it.name })
+            listAdapter.notifyDataSetChanged()
+        }
+        listView.setOnItemClickListener { _, _, pos, _ ->
+            val c = shown.getOrNull(pos)
+            if (c != null) {
+                Actions.toggleStar(this, c)
+                dialog.dismiss()
+                loadContacts()
+            }
+        }
+        dialog.show()
     }
 
     private fun openDetail(c: Contact) {
@@ -243,11 +435,53 @@ class MainActivity : AppCompatActivity() {
     private fun showTab(t: Int) {
         tab = t
         TransitionManager.beginDelayedTransition(root)
-        header.visibility = if (t == 0) View.GONE else View.VISIBLE
+        header.visibility = if (keypadOpen) View.GONE else View.VISIBLE
         updateChipsVisibility()
-        if (t == 0) fab.hide() else fab.show()
-        swap(paneDialpad, t == 0)
+        if (t == 1 && !keypadOpen) fab.show() else fab.hide()
+        swap(paneHome, t == 0)
         swap(paneContacts, t == 1)
+        updatePermissionOverlay()
+    }
+
+    private fun openKeypad() {
+        if (keypadOpen) return
+        keypadOpen = true
+        backCallback.isEnabled = true
+        val imm = getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager
+        imm.hideSoftInputFromWindow(search.windowToken, 0)
+        search.clearFocus()
+        header.visibility = View.GONE
+        fab.hide()
+        paneDialpad.animate().cancel()
+        val h = if (root.height > 0) root.height else Ui.dp(this, 900)
+        paneDialpad.translationY = h.toFloat()
+        paneDialpad.visibility = View.VISIBLE
+        paneDialpad.animate()
+            .translationY(0f)
+            .setDuration(240L)
+            .setInterpolator(DecelerateInterpolator())
+            .start()
+        updatePermissionOverlay()
+    }
+
+    private fun closeKeypad() {
+        if (!keypadOpen) return
+        keypadOpen = false
+        backCallback.isEnabled = false
+        header.visibility = View.VISIBLE
+        if (tab == 1) fab.show()
+        paneDialpad.animate().cancel()
+        paneDialpad.animate()
+            .translationY(paneDialpad.height.toFloat())
+            .setDuration(200L)
+            .withEndAction { if (!keypadOpen) paneDialpad.visibility = View.GONE }
+            .start()
+        updatePermissionOverlay()
+    }
+
+    private fun updatePermissionOverlay() {
+        emptyPermission.visibility =
+            if (!hasContactsPermission() && tab == 1 && !keypadOpen) View.VISIBLE else View.GONE
     }
 
     private fun swap(pane: View, show: Boolean) {
@@ -263,6 +497,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun updateChipsVisibility() {
+        homeChipsScroll.visibility = if (tab == 0) View.VISIBLE else View.GONE
         chipsScroll.visibility = if (tab == 1 && chipTitles.size > 1) View.VISIBLE else View.GONE
     }
 
@@ -278,9 +513,11 @@ class MainActivity : AppCompatActivity() {
                 groups = g
                 sortedAll = sorted
                 searchEngine = SearchEngine(sorted)
+                phoneIndex = PhoneIndex(sorted)
                 rebuildChips()
                 applyFilter()
                 dialpad.setContacts(sorted)
+                rebuildHome()
             }
         }.start()
     }
@@ -332,7 +569,7 @@ class MainActivity : AppCompatActivity() {
                 emptyPermission, R.drawable.ic_people, "Contacts access needed",
                 "Allow access so Fast Contacts can show and manage your contacts.", "Grant access"
             ) { requestPermissions() }
-            emptyPermission.visibility = View.VISIBLE
+            updatePermissionOverlay()
             return
         }
         emptyPermission.visibility = View.GONE

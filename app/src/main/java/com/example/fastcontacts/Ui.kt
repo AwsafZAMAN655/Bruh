@@ -98,9 +98,9 @@ object Ui {
         val c = LinearLayout(ctx)
         c.orientation = LinearLayout.VERTICAL
         c.background = ContextCompat.getDrawable(ctx, R.drawable.bg_card)
-        c.setPadding(dp(ctx, 16), dp(ctx, 12), dp(ctx, 16), dp(ctx, 12))
+        c.setPadding(dp(ctx, 18), dp(ctx, 14), dp(ctx, 18), dp(ctx, 14))
         val lp = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
-        lp.setMargins(dp(ctx, 16), dp(ctx, 6), dp(ctx, 16), dp(ctx, 6))
+        lp.setMargins(dp(ctx, 12), dp(ctx, 5), dp(ctx, 12), dp(ctx, 5))
         parent.addView(c, lp)
         if (title != null) {
             val t = TextView(ctx)

@@ -2,64 +2,45 @@
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:orientation="vertical"
-    android:paddingTop="4dp">
-
-    <TextView
-        android:id="@+id/btnToggleKeypad"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:gravity="end|center_vertical"
-        android:minHeight="40dp"
-        android:paddingStart="16dp"
-        android:paddingTop="8dp"
-        android:paddingEnd="20dp"
-        android:paddingBottom="8dp"
-        android:text="Hide keypad"
-        android:textColor="@color/app_text_secondary"
-        android:textSize="14sp"
-        android:clickable="true"
-        android:focusable="true"
-        android:contentDescription="Hide or show dialpad" />
+    android:background="@color/app_bg"
+    android:clickable="true"
+    android:focusable="true"
+    android:orientation="vertical">
 
     <LinearLayout
-        android:id="@+id/recentSection"
+        android:id="@+id/suggestSection"
         android:layout_width="match_parent"
         android:layout_height="0dp"
         android:layout_weight="1"
-        android:minHeight="0dp"
         android:orientation="vertical">
 
         <TextView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:paddingStart="20dp"
-            android:paddingTop="6dp"
+            android:paddingStart="24dp"
+            android:paddingTop="16dp"
             android:paddingBottom="6dp"
-            android:text="Recent calls"
-            android:textColor="@color/app_text"
-            android:textSize="17sp"
+            android:text="Suggested"
+            android:textColor="@color/app_accent"
+            android:textSize="14sp"
             android:textStyle="bold" />
 
         <androidx.recyclerview.widget.RecyclerView
-            android:id="@+id/recentCalls"
+            android:id="@+id/suggestedStrip"
             android:layout_width="match_parent"
-            android:layout_height="0dp"
-            android:layout_weight="1"
+            android:layout_height="wrap_content"
             android:clipToPadding="false"
-            android:paddingStart="8dp"
-            android:paddingEnd="8dp" />
+            android:paddingStart="12dp"
+            android:paddingEnd="12dp" />
 
         <TextView
-            android:id="@+id/recentCallsEmpty"
+            android:id="@+id/suggestedEmpty"
             android:layout_width="match_parent"
-            android:layout_height="0dp"
-            android:layout_weight="1"
-            android:gravity="center"
-            android:padding="16dp"
-            android:text="No recent calls yet"
+            android:layout_height="wrap_content"
+            android:padding="24dp"
+            android:text="Favourite and recently called contacts appear here."
             android:textColor="@color/app_text_secondary"
-            android:textSize="13sp"
+            android:textSize="14sp"
             android:visibility="gone" />
     </LinearLayout>
 
@@ -67,12 +48,13 @@
         android:id="@+id/matchesTitle"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:paddingStart="20dp"
-        android:paddingTop="4dp"
-        android:paddingBottom="4dp"
+        android:paddingStart="24dp"
+        android:paddingTop="16dp"
+        android:paddingBottom="6dp"
         android:text="Matching contacts"
-        android:textColor="@color/app_text_secondary"
+        android:textColor="@color/app_accent"
         android:textSize="14sp"
+        android:textStyle="bold"
         android:visibility="gone" />
 
     <androidx.recyclerview.widget.RecyclerView
@@ -85,61 +67,106 @@
         android:paddingEnd="4dp"
         android:visibility="gone" />
 
-    <TextView
-        android:id="@+id/dialDisplay"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:ellipsize="start"
-        android:gravity="center"
-        android:minHeight="54dp"
-        android:padding="6dp"
-        android:singleLine="true"
-        android:textColor="@color/app_text"
-        android:textSize="32sp" />
-
-    <GridLayout
-        android:id="@+id/keypad"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:columnCount="3"
-        android:paddingStart="24dp"
-        android:paddingEnd="24dp" />
-
     <LinearLayout
+        android:id="@+id/dialSheet"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:gravity="center"
-        android:orientation="horizontal"
-        android:paddingStart="8dp"
-        android:paddingTop="4dp"
-        android:paddingEnd="8dp"
-        android:paddingBottom="6dp">
+        android:background="@drawable/bg_sheet"
+        android:orientation="vertical"
+        android:paddingBottom="14dp">
 
-        <ImageButton
-            android:id="@+id/btnAddContact"
-            android:layout_width="52dp"
-            android:layout_height="52dp"
-            android:background="?attr/selectableItemBackgroundBorderless"
-            android:contentDescription="Add to contacts"
-            android:src="@drawable/ic_person" />
+        <ImageView
+            android:id="@+id/btnToggleKeypad"
+            android:layout_width="match_parent"
+            android:layout_height="28dp"
+            android:background="?attr/selectableItemBackground"
+            android:clickable="true"
+            android:contentDescription="Hide dialpad"
+            android:focusable="true"
+            android:paddingTop="4dp"
+            android:src="@drawable/ic_expand" />
 
-        <ImageButton
-            android:id="@+id/btnDialCall"
-            android:layout_width="64dp"
-            android:layout_height="64dp"
-            android:layout_marginStart="28dp"
-            android:layout_marginEnd="28dp"
-            android:background="@drawable/bg_call"
-            android:contentDescription="Call"
-            android:src="@drawable/ic_call"
-            android:tint="@color/app_on_call" />
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:gravity="center_vertical"
+            android:orientation="horizontal"
+            android:paddingStart="12dp"
+            android:paddingEnd="12dp">
 
-        <ImageButton
-            android:id="@+id/btnBackspace"
-            android:layout_width="52dp"
-            android:layout_height="52dp"
-            android:background="?attr/selectableItemBackgroundBorderless"
-            android:contentDescription="Backspace"
-            android:src="@drawable/ic_backspace" />
+            <ImageButton
+                android:id="@+id/btnAddContact"
+                android:layout_width="48dp"
+                android:layout_height="48dp"
+                android:background="?attr/selectableItemBackgroundBorderless"
+                android:contentDescription="Add to contacts"
+                android:src="@drawable/ic_person_add" />
+
+            <TextView
+                android:id="@+id/dialDisplay"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:ellipsize="start"
+                android:gravity="center"
+                android:minHeight="48dp"
+                android:singleLine="true"
+                android:textColor="@color/app_text"
+                android:textSize="30sp" />
+
+            <ImageButton
+                android:id="@+id/btnBackspace"
+                android:layout_width="48dp"
+                android:layout_height="48dp"
+                android:background="?attr/selectableItemBackgroundBorderless"
+                android:contentDescription="Backspace"
+                android:src="@drawable/ic_backspace" />
+        </LinearLayout>
+
+        <GridLayout
+            android:id="@+id/keypad"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:columnCount="3"
+            android:paddingStart="14dp"
+            android:paddingEnd="14dp" />
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:gravity="center"
+            android:orientation="horizontal"
+            android:paddingTop="8dp">
+
+            <LinearLayout
+                android:id="@+id/btnDialCall"
+                android:layout_width="wrap_content"
+                android:layout_height="56dp"
+                android:background="@drawable/bg_call_pill"
+                android:clickable="true"
+                android:contentDescription="Call"
+                android:focusable="true"
+                android:gravity="center"
+                android:minWidth="132dp"
+                android:orientation="horizontal"
+                android:paddingStart="24dp"
+                android:paddingEnd="24dp">
+
+                <ImageView
+                    android:layout_width="22dp"
+                    android:layout_height="22dp"
+                    android:importantForAccessibility="no"
+                    android:src="@drawable/ic_call"
+                    android:tint="@color/app_on_call" />
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="10dp"
+                    android:text="Call"
+                    android:textColor="@color/app_on_call"
+                    android:textSize="17sp" />
+            </LinearLayout>
+        </LinearLayout>
     </LinearLayout>
 </LinearLayout>

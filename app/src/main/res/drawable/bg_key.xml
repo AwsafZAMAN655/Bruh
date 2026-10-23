@@ -2,8 +2,9 @@
 <ripple xmlns:android="http://schemas.android.com/apk/res/android"
     android:color="?attr/colorControlHighlight">
     <item>
-        <shape android:shape="oval">
-            <solid android:color="@color/app_surface_variant" />
+        <shape android:shape="rectangle">
+            <solid android:color="@color/app_surface" />
+            <corners android:radius="29dp" />
         </shape>
     </item>
 </ripple>

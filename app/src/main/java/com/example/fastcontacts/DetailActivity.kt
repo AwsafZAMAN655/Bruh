@@ -1,6 +1,8 @@
 package com.example.fastcontacts
 
+import android.Manifest
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Bundle
 import android.transition.TransitionManager
@@ -19,6 +21,7 @@ import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.content.ContextCompat
 
 class DetailActivity : AppCompatActivity() {
 
@@ -36,7 +39,13 @@ class DetailActivity : AppCompatActivity() {
     private var whatsappExpandIcon: ImageView? = null
     private var isWhatsappExpanded = false
 
-    private class Pill(val label: String, val icon: Int, val tinted: Boolean, val run: () -> Unit)
+    private class Pill(
+        val label: String,
+        val icon: Int,
+        val tinted: Boolean,
+        val enabled: Boolean = true,
+        val run: () -> Unit
+    )
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -103,17 +112,17 @@ class DetailActivity : AppCompatActivity() {
         val header = LinearLayout(this)
         header.orientation = LinearLayout.VERTICAL
         header.gravity = Gravity.CENTER_HORIZONTAL
-        header.setPadding(dp(16), dp(4), dp(16), dp(16))
+        header.setPadding(dp(16), dp(0), dp(16), dp(16))
         val av = AvatarView(this)
-        av.layoutParams = LinearLayout.LayoutParams(dp(104), dp(104))
+        av.layoutParams = LinearLayout.LayoutParams(dp(150), dp(150))
         av.bind(c, true)
         header.addView(av)
         val name = TextView(this)
         name.text = c.name
-        name.textSize = 26f
+        name.textSize = 30f
         name.gravity = Gravity.CENTER
         name.setTextColor(Ui.color(this, R.color.app_text))
-        name.setPadding(0, dp(12), 0, 0)
+        name.setPadding(0, dp(16), 0, 0)
         header.addView(name)
         val sub = when {
             c.jobTitle.isNotEmpty() && c.company.isNotEmpty() -> c.jobTitle + " at " + c.company
@@ -140,20 +149,16 @@ class DetailActivity : AppCompatActivity() {
             pills.add(Pill("Message", R.drawable.ic_sms, true) {
                 Actions.withNumber(this, c) { n -> Actions.sms(this, n) }
             })
-            if (Actions.isInstalled(this, Social.whatsapp)) {
-                pills.add(Pill("WhatsApp", R.drawable.ic_whatsapp_placeholder, false) {
-                    Actions.withNumber(this, c) { n -> Actions.openSocial(this, Social.whatsapp, n) }
-                })
-            }
-            if (Actions.isInstalled(this, Social.meet)) {
-                pills.add(Pill("Video", R.drawable.ic_video, true) {
-                    Actions.withNumber(this, c) { n -> Actions.videoCall(this, n) }
-                })
-            }
+            pills.add(Pill("Video", R.drawable.ic_video, true) {
+                Actions.withNumber(this, c) { n -> Actions.videoCall(this, n) }
+            })
         }
-        if (c.emails.isNotEmpty()) {
-            pills.add(Pill("Email", R.drawable.ic_email, true) {
-                Actions.withEmail(this, c) { e -> Actions.email(this, e) }
+        pills.add(Pill("Email", R.drawable.ic_email, true, c.emails.isNotEmpty()) {
+            Actions.withEmail(this, c) { e -> Actions.email(this, e) }
+        })
+        if (c.phones.isNotEmpty() && Actions.isInstalled(this, Social.whatsapp)) {
+            pills.add(Pill("WhatsApp", R.drawable.ic_whatsapp_placeholder, false) {
+                Actions.withNumber(this, c) { n -> Actions.openSocial(this, Social.whatsapp, n) }
             })
         }
         if (c.addresses.isNotEmpty()) {
@@ -167,7 +172,7 @@ class DetailActivity : AppCompatActivity() {
         scroll.isHorizontalScrollBarEnabled = false
         val pillRow = LinearLayout(this)
         pillRow.orientation = LinearLayout.HORIZONTAL
-        pillRow.setPadding(dp(12), 0, dp(12), dp(8))
+        pillRow.setPadding(dp(12), dp(4), dp(12), dp(8))
         for (p in pills) {
             val v = LayoutInflater.from(this).inflate(R.layout.view_action_pill, pillRow, false)
             val icon = v.findViewById<ImageView>(R.id.pillIcon)
@@ -175,6 +180,7 @@ class DetailActivity : AppCompatActivity() {
             if (p.tinted) icon.imageTintList = Ui.tint(this, R.color.app_on_accent_container)
             v.findViewById<TextView>(R.id.pillLabel).text = p.label
             v.setOnClickListener { p.run() }
+            v.alpha = if (p.enabled) 1f else 0.45f
             val lp = LinearLayout.LayoutParams(dp(76), ViewGroup.LayoutParams.WRAP_CONTENT)
             lp.setMargins(dp(4), 0, dp(4), 0)
             pillRow.addView(v, lp)
@@ -188,6 +194,7 @@ class DetailActivity : AppCompatActivity() {
             val wa = Actions.isInstalled(this, Social.whatsapp)
             for ((i, p) in c.phones.withIndex()) {
                 val trailing = ArrayList<Ui.Trail>()
+                trailing.add(Ui.Trail(R.drawable.ic_video, "Video call " + p.number) { Actions.videoCall(this, p.number) })
                 trailing.add(Ui.Trail(R.drawable.ic_sms, "Message " + p.number) { Actions.sms(this, p.number) })
                 if (wa) {
                     trailing.add(Ui.Trail(R.drawable.ic_whatsapp_placeholder, "WhatsApp " + p.number, false) {
@@ -204,6 +211,39 @@ class DetailActivity : AppCompatActivity() {
                     trailing = trailing
                 )
             }
+        }
+
+        // ----- recent activity (call history with this contact) -----
+        if (c.phones.isNotEmpty() && hasCallLogAccess()) {
+            val activityCard = Ui.card(this, content, "Recent activity")
+            activityCard.visibility = View.GONE
+            val keys = c.phones.map { PhoneKey.of(it.number) }.filter { it.isNotEmpty() }.toSet()
+            Thread {
+                val calls = CallLogRepository.loadForKeys(this, keys, 5)
+                runOnUiThread {
+                    if (isFinishing || isDestroyed || calls.isEmpty()) return@runOnUiThread
+                    for (e in calls) {
+                        val info = CallTypes.info(e.type)
+                        val d = HomeBuilder.duration(e.durationSeconds)
+                        val primary = if (!CallTypes.isMissed(e.type) && d.isNotEmpty()) {
+                            "Call time " + d
+                        } else {
+                            info.label + " call"
+                        }
+                        val secondary = info.arrow + " " + info.label + " · " +
+                            HomeBuilder.dayTitle(this, e.dateMillis) + ", " + HomeBuilder.time(this, e.dateMillis)
+                        Ui.row(
+                            this, activityCard, R.drawable.ic_call, primary, secondary,
+                            onClick = { showFullHistory(c, keys) }
+                        )
+                    }
+                    Ui.row(
+                        this, activityCard, R.drawable.ic_history, "See all in History", null,
+                        onClick = { showFullHistory(c, keys) }
+                    )
+                    activityCard.visibility = View.VISIBLE
+                }
+            }.start()
         }
 
         // ----- WhatsApp expandable section integration -----
@@ -288,6 +328,20 @@ class DetailActivity : AppCompatActivity() {
         // ----- source -----
         val src = Ui.card(this, content, null)
         Ui.row(this, src, R.drawable.ic_cloud, Actions.sourceLabel(c), null)
+    }
+
+    private fun hasCallLogAccess(): Boolean =
+        ContextCompat.checkSelfPermission(this, Manifest.permission.READ_CALL_LOG) ==
+            PackageManager.PERMISSION_GRANTED
+
+    private fun showFullHistory(c: Contact, keys: Set<String>) {
+        Thread {
+            val all = CallLogRepository.loadForKeys(this, keys, 200)
+            runOnUiThread {
+                if (isFinishing || isDestroyed) return@runOnUiThread
+                CallHistorySheet.show(this, c.name, all)
+            }
+        }.start()
     }
 
     private fun setupWhatsAppSection(rawNumber: String) {
